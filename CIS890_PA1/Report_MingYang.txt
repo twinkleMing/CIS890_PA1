@@ -1,0 +1,177 @@
+1. Procedure and Data Structure for Vector Space Retrieval System
+In PA1.java, which runs mapreduce jobs to get mapfiles we need for retrieval:
+I use 3 mapreduce jobs, and 3 mapfile output that we will use later for retrieval.
+One mapfile stores the (DoubleWritable)length of each file by the key of (Text)docName.
+One mapfile stores the (DoubleWritable)IDF score of each word by the key of (Text)word.
+One mapfile stores the (ArrayListWritableComparable<PairOfStringDouble>)InvertedIndex of each word by the key of (Text)word. Each word has a list, and each element in this list is a pair of file name containing this word, and the tfidf score of this word in this file.
+I also used some data structure as PairOfStrings, PairOfStringInt to store intermediate data. PairOfStrings is a pair of two strings, PairOfStringInt is a pair of string and int value. 
+I use HashSet<String> to store stop wprds, Hashtable<String, Boolean> to store the flag for each file to judge if the current line is in title body, text body, or neither.
+
+In QueryRetrieval.java, which runs to retrieve:
+I use Hashtable<String, Integer> to store the term frequencies for the query.
+I sue Hashtable<String, Hashtable<String, DoubleWritable>> to store the tfidf score we need for this query. Outter hashtable uses file name as key, inner hashtable uses word as key. I just keep all the files that have at least one word same as query, and keep the tfidf score just for the words that query contains.
+I use Hashtable<Double,String> to store the score for each file that I mentioned above. I use the score as a key so that I can easily sort them, and file name as value.
+I still use HashSet<String> tp store stop words.
+
+2. map/reduce jobs
+1st job: Preprocess
+map input&output: <LongWritable offset, Text line, PairOfStrings(docName,word), IntWritable One>
+reduce input&output: <PairOfStrings(docName,word), IntWritable One, PairOfStrings(docName,word), IntWritable sum>
+function:read in the files, for each line, do the preprocess part, remove stopwords and do stemming. For each distinct term in each file, output its frequency.
+
+2nd job: ComputeTF
+map input&output: <PairOfStrings(docName,word), IntWritable sum, Text docName, PairOfStringInt(word,sum)>
+reduce input&output: <Text docName, PairOfStringInt(word,sum), Text docName, PairOfStringDouble(word,tf)>
+function:read in the records from 1st job, for each file, group all the terms and its frequency together, then calculate the tf score for the terms in each file.
+
+3rd job: computeTFIDF
+map input&output: <Text docName, PairOfStringDouble(word,tf), Text word, PairOfStringDouble(docName,tf)>
+reduce input&output: <Text word, PairOfStringDouble(docName,tf), Text word, PairOfStringDouble(docName,tfidf)>
+function:read in the records from 2rd job, for each word, group all the files containing it and its tf score in each file, then calculate the idf score for this word, then calculate and output tfidf score for each term in each file.
+
+4th job: docLength
+map input&output: <Text word, PairOfStringDouble(docName,tfidf), Text docName, PairOfStringDouble(word,tfidf)>
+reduce input&output: <Text docName, PairOfStringDouble(word,tfidf), Text docName, DoubleWritable docLength>
+function:read in the records from 3rd job, for each file, group all the terms in it and its tfidf score in each file, then calculate the length of this file, output a mapfile to store this length by the key of docName.
+
+4th job: InvertedIndex
+map input&output: <Text word, PairOfStringDouble(docName,tfidf), Text word, PairOfStringDouble(docName,tfidf)>
+reduce input&output: <Text word, PairOfStringDouble(docName,tfidf), Text word, ArrayList(PairOfStringDouble(docName,tfidf))>
+function:read in the records from 3rd job, for each word, output the inverted index of all the files containing this word, and its tfidf score in each file. Store the list in a mapfile by the key of word.
+
+5th job: IDF
+map input&output: <Text word, PairOfStringDouble(docName,tfidf), Text word, IntWritable One>
+reduce input&output: < Text word, IntWritable One,  Text word, DoubleWritable IDF>
+function:read in the records from 3rd job, for each word, calculate the number of files containing it, calculate the IDF score for each word and output these scores in a mapfile by the key of word.
+
+3. 
+I use eclipse to debug this program. Use cygwin to copy files to localhost, and most of the procedure is as same as how I run PA0. First we run PA1.java, by command "hadoop jar PA1.jar PA1", no argument needed. It chains 6 jobs one by one and output 3 mapfiles we need in 3 seperate folders. (Actually there are 6 folders, while the other 3 folders are intermediate result.)  
+Then run QueryRetrieval.java by command "hadoop jar PA1.jar QueryRetrieval", still no argument needed. Then console would output "please type query:", type in your query. Then it will output result it gets by calculation, list top 10 files with highest relevance. Then console would output "please type query:" again, you can type another query. If you want to end this program, please type in "exit".
+For the query retrieval part, I did not run it locally. My desktop is down. I am using machine in linux lab in our department. However, they do not allow me to copy anything to eclipse install folder. So that I cannot copy hadoop plugin into eclipse. Each time I want to debug, I just export the whole program in a jar file, copy it to beocat account and run it.
+Actually I do not understand this requirement very much. So I do not know what to prove.
+
+
+4. result
+My result is a little different. It will first output the key words and its frequency in the query. Then it will output the top 10 files, with its score. And for each file, output the list of query words it contains, and the tfidf score for these words in the files.
+
+Query:
+what is the basic mechanism of the transonic aileron buzz
+Answer:
+{mechan=1, basic=1, aileron=1, buzz=1, transon=1}
+cranfield0496 0.6031685078907372
+{aileron=5.043425116919247, buzz=4.829485010402233, transon=3.091042453358316}
+cranfield0643 0.2713787693206762
+{aileron=5.043425116919247}
+cranfield0199 0.23297362063794202
+{aileron=2.836926628267076}
+cranfield0903 0.2319276440139029
+{mechan=0.3779108201846839, aileron=1.6811417056397489, transon=0.6868983229685146}
+cranfield0313 0.1555245398363149
+{basic=0.7052721049232323, transon=1.2364169813433266}
+cranfield0660 0.14786086337590054
+{basic=1.7631802623080808}
+cranfield0503 0.14636871098236123
+{transon=1.766309973347609}
+cranfield0440 0.1329290770949858
+{basic=0.7052721049232323, transon=1.8546254720149895}
+cranfield0038 0.1298596805657663
+{mechan=1.1337324605540517, transon=2.060694968905544}
+cranfield1268 0.1249903200200613
+{mechan=3.06107764349594}
+
+Query:
+paper on shock-sound wave interaction
+Answer:
+{on=1, shock=1, interact=1, wave=1, sound=1, paper=1}
+cranfield0064 0.4997054521633687
+{on=0.0, shock=0.7428174980465079, interact=0.20831155393093925, wave=1.791759469228055, sound=1.3888145817862403}
+cranfield0170 0.38871451128072054
+{on=0.0, shock=1.2875503299472804, interact=2.70805020110221, wave=0.358351893845611, paper=0.19459101490553132}
+cranfield1364 0.34348115428743076
+{on=0.0, shock=1.6094379124341003, interact=1.6925313756888813, wave=0.6719098009605207}
+cranfield0132 0.3376989935648588
+{on=0.0, shock=1.0729586082894, wave=1.791759469228055, sound=1.5045491302684268}
+cranfield0256 0.30883587187204564
+{on=0.0, shock=1.2875503299472804, interact=1.624830120661326, wave=1.433407575382444}
+cranfield0335 0.3042812527869475
+{shock=1.2875503299472804, interact=1.083220080440884, wave=1.433407575382444}
+cranfield0345 0.28884727080679073
+{on=0.0, shock=1.6094379124341003, interact=2.166440160881768, wave=0.716703787691222}
+cranfield0402 0.28600715744567745
+{shock=1.2875503299472804, wave=1.791759469228055, sound=1.44436716505769}
+cranfield0166 0.28568470488042347
+{on=0.0, sound=3.6109179126442243}
+cranfield0798 0.27740820617953665
+{on=0.0, shock=0.8583668866315202, interact=1.8053668007348067, wave=0.5972531564093516, paper=0.5189093730814168}
+
+Query:
+material properties of photoelastic materials
+Answer:
+{properti=1, photoelast=1, materi=2}
+cranfield1097 0.33122005300521795
+{materi=2.330013990541993}
+cranfield0761 0.33016969939897256
+{materi=2.2467992051654933}
+cranfield0866 0.27490389438281015
+{materi=2.2467992051654933}
+cranfield1117 0.26557394944743634
+{materi=2.995732273553991}
+cranfield0553 0.2501415547780527
+{materi=1.7118470134594233}
+cranfield0462 0.24935904534182507
+{properti=0.9939626599152002, photoelast=1.44884550312067, materi=1.7974393641323945}
+cranfield1096 0.23535527856504007
+{materi=2.995732273553991}
+cranfield1025 0.22115334106296536
+{properti=0.8283022165960001, materi=1.9971548490359938}
+cranfield1099 0.21017316209853118
+{properti=0.6212266624470001, materi=1.4978661367769954}
+cranfield1279 0.2086122856655324
+{materi=2.2467992051654933}
+
+5.
+Do not know how to do that on beocat.
+Searched for SGE and hadoop, still cannot get much information of how to do that.
+Sorry, because I do not want to spend too much time on one homework, I just leave it unfinished.
+
+6. discussion and comments
+Actually I am not good at java programming. And I wasted much time to change my functions between mapred package and mapreduce package, and I also tried to use API from 0.21.0 version, which failed become I found beocat is running 0.20.2 version. 
+I basiclly use mapreduce package because in which mapper has setup function which will just run once at the beginning of the task. I need this to set up my stop words table and flagtable. And I thought since it is a more updated package it should be better which I found is totally wrong later!!!! It is really disappointing when I found that the mapreduce package does not have mapfile as outputformat!!! That is why I changed last 3 jobs to use mapred package since I cannot search for the record I need by key in sequence file. 
+And in mapred package the reduce function uses "Iterator<V2> values" while reduce function in mapreduce package uses "Iterable<VALUEIN> values", which took me whole two days to figure that out!!
+I also totally lost myself in understanding the differences between class Job, JobConf, and Configuration. 
+And it is really hard to decide which data structure to use in QueryRetrieval. We need the function of add, function of search the intermediate score by word, by file name, or by both. We also need the function to extract the set of keys, or values, and iterate them. 
+
+7.
+The whole 3 weeks... basicly did nothing else in these 3 weeks......
+
+8. Acknowledge:
+I use  ArrayListWritableComparable.java, PairOfStrings.java, PairOfStringint.java, PairOfStringDouble.java from Cloud9.
+I use Stemmer.java from Porter stemmer.
+I consulted the BooleanRetrieval.java and some other source codes in Cloud9.
+I also consulted the sample code of wordcount here:
+http://hadoop.apache.org/common/docs/r0.20.2/mapred_tutorial.html#Example%3A+WordCount+v2.0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
